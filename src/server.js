@@ -37,11 +37,12 @@ app.use('/api', statusRoutes);
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
 
+  const multer = require('multer');
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        error: 'File too large. Maximum size is 500MB'
+        error: 'File too large. Maximum size is 2GB'
       });
     }
   }

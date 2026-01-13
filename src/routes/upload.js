@@ -21,10 +21,10 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 500 * 1024 * 1024 // 500MB limit
+    fileSize: 2 * 1024 * 1024 * 1024 // 2GB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv'];
+    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv', '.m4v'];
     const ext = path.extname(file.originalname).toLowerCase();
 
     if (allowedExtensions.includes(ext)) {

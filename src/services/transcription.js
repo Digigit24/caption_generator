@@ -103,6 +103,35 @@ function secondsToSRTTime(seconds) {
 }
 
 /**
+ * Convert seconds to VTT timestamp format (HH:MM:SS.mmm)
+ * @param {number} seconds - Time in seconds
+ * @returns {string} - VTT timestamp
+ */
+function secondsToVTTTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const millis = Math.round((seconds % 1) * 1000);
+
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+}
+
+/**
+ * Convert seconds to SBV timestamp format (H:MM:SS.mmm)
+ * @param {number} seconds - Time in seconds
+ * @returns {string} - SBV timestamp
+ */
+function secondsToSBVTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const millis = Math.round((seconds % 1) * 1000);
+
+  // SBV uses single digit hour if less than 10
+  return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+}
+
+/**
  * Generate SRT file content from captions
  * @param {Array} captions - Array of caption objects with start, end, text
  * @returns {string} - SRT file content
@@ -117,6 +146,39 @@ function generateSRTContent(captions) {
   });
 
   return srtContent;
+}
+
+/**
+ * Generate VTT file content from captions (WebVTT format)
+ * @param {Array} captions - Array of caption objects with start, end, text
+ * @returns {string} - VTT file content
+ */
+function generateVTTContent(captions) {
+  let vttContent = 'WEBVTT\n\n';
+
+  captions.forEach((caption, index) => {
+    vttContent += `${index + 1}\n`;
+    vttContent += `${secondsToVTTTime(caption.start)} --> ${secondsToVTTTime(caption.end)}\n`;
+    vttContent += `${caption.text}\n\n`;
+  });
+
+  return vttContent;
+}
+
+/**
+ * Generate SBV file content from captions (YouTube/Premiere Pro format)
+ * @param {Array} captions - Array of caption objects with start, end, text
+ * @returns {string} - SBV file content
+ */
+function generateSBVContent(captions) {
+  let sbvContent = '';
+
+  captions.forEach((caption) => {
+    sbvContent += `${secondsToSBVTime(caption.start)},${secondsToSBVTime(caption.end)}\n`;
+    sbvContent += `${caption.text}\n\n`;
+  });
+
+  return sbvContent;
 }
 
 /**
@@ -140,11 +202,51 @@ function saveSRTFile(filePath, captions) {
   });
 }
 
+/**
+ * Save all caption formats (SRT, VTT, SBV) to disk
+ * @param {string} baseFilePath - Base output file path (without extension)
+ * @param {Array} captions - Array of caption objects
+ * @returns {Promise<Object>} - Object with paths to all saved files
+ */
+async function saveAllCaptionFormats(baseFilePath, captions) {
+  const srtPath = `${baseFilePath}.srt`;
+  const vttPath = `${baseFilePath}.vtt`;
+  const sbvPath = `${baseFilePath}.sbv`;
+
+  const srtContent = generateSRTContent(captions);
+  const vttContent = generateVTTContent(captions);
+  const sbvContent = generateSBVContent(captions);
+
+  try {
+    await fs.promises.writeFile(srtPath, srtContent, 'utf8');
+    console.log(`SRT file saved: ${srtPath}`);
+
+    await fs.promises.writeFile(vttPath, vttContent, 'utf8');
+    console.log(`VTT file saved: ${vttPath}`);
+
+    await fs.promises.writeFile(sbvPath, sbvContent, 'utf8');
+    console.log(`SBV file saved: ${sbvPath}`);
+
+    return {
+      srt: srtPath,
+      vtt: vttPath,
+      sbv: sbvPath
+    };
+  } catch (error) {
+    throw new Error(`Failed to save caption files: ${error.message}`);
+  }
+}
+
 module.exports = {
   transcribeChunk,
   getContextFromText,
   formatSegmentsAsSRT,
   generateSRTContent,
+  generateVTTContent,
+  generateSBVContent,
   saveSRTFile,
-  secondsToSRTTime
+  saveAllCaptionFormats,
+  secondsToSRTTime,
+  secondsToVTTTime,
+  secondsToSBVTime
 };

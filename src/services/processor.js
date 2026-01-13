@@ -5,7 +5,7 @@ const {
   transcribeChunk,
   getContextFromText,
   formatSegmentsAsSRT,
-  saveSRTFile
+  saveAllCaptionFormats
 } = require('./transcription');
 const {
   getVideo,
@@ -142,13 +142,18 @@ async function processVideo(videoId, videoData) {
       previousContext = getContextFromText(fullTranscript, 100);
     }
 
-    // Step 4: Generate final SRT file
-    console.log('Step 4: Generating final SRT file...');
+    // Step 4: Generate final caption files (SRT, VTT, SBV)
+    console.log('Step 4: Generating caption files in multiple formats...');
     await updateVideoStatus(videoId, 'merging');
 
     const allCaptions = await getCaptions(videoId);
-    const srtPath = path.join(__dirname, '../../captions', `${videoId}_final.srt`);
-    await saveSRTFile(srtPath, allCaptions);
+    const basePath = path.join(__dirname, '../../captions', `${videoId}_final`);
+    const captionPaths = await saveAllCaptionFormats(basePath, allCaptions);
+
+    console.log('Generated caption formats:');
+    console.log(`  - SRT: ${captionPaths.srt}`);
+    console.log(`  - VTT: ${captionPaths.vtt}`);
+    console.log(`  - SBV: ${captionPaths.sbv}`);
 
     // Step 5: Cleanup temporary files
     console.log('Step 5: Cleaning up temporary files...');
@@ -160,7 +165,7 @@ async function processVideo(videoId, videoData) {
 
     return {
       videoId,
-      srtPath,
+      captionPaths,
       captionCount: allCaptions.length,
       chunkCount: chunks.length
     };

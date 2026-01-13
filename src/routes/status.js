@@ -78,11 +78,21 @@ router.get('/queue', (req, res) => {
 });
 
 /**
- * GET /download/:videoId - Download SRT file
+ * GET /download/:videoId?format=srt|vtt|sbv - Download caption file
  */
 router.get('/download/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
+    const format = (req.query.format || 'srt').toLowerCase();
+
+    // Validate format
+    const validFormats = ['srt', 'vtt', 'sbv'];
+    if (!validFormats.includes(format)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid format. Allowed formats: ${validFormats.join(', ')}`
+      });
+    }
 
     const video = await getVideo(videoId);
 
@@ -101,16 +111,18 @@ router.get('/download/:videoId', async (req, res) => {
       });
     }
 
-    const srtPath = path.join(__dirname, '../../captions', `${videoId}_final.srt`);
+    const captionPath = path.join(__dirname, '../../captions', `${videoId}_final.${format}`);
 
-    if (!fs.existsSync(srtPath)) {
+    if (!fs.existsSync(captionPath)) {
       return res.status(404).json({
         success: false,
-        error: 'SRT file not found'
+        error: `Caption file not found (${format} format)`
       });
     }
 
-    res.download(srtPath, `${video.filename}.srt`);
+    // Extract original filename without extension
+    const originalName = video.filename.replace(/\.[^/.]+$/, '');
+    res.download(captionPath, `${originalName}.${format}`);
 
   } catch (error) {
     console.error('Download error:', error);
