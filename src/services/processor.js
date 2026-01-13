@@ -1,0 +1,229 @@
+const path = require('path');
+const fs = require('fs').promises;
+const { extractAudio, splitAudioIntoChunks } = require('../utils/ffmpeg');
+const {
+  transcribeChunk,
+  getContextFromText,
+  formatSegmentsAsSRT,
+  saveSRTFile
+} = require('./transcription');
+const {
+  getVideo,
+  updateVideoStatus,
+  updateVideoAudioPath,
+  createChunk,
+  getChunks,
+  getPendingChunk,
+  updateChunkStatus,
+  updateChunkTranscript,
+  insertCaption,
+  getCaptions
+} = require('../utils/database');
+
+// Processing queue
+const processingQueue = new Map();
+const activeProcesses = new Set();
+
+/**
+ * Add video to processing queue
+ * @param {string} videoId - Video ID
+ * @param {Object} videoData - Video metadata
+ */
+function addToQueue(videoId, videoData) {
+  processingQueue.set(videoId, videoData);
+  console.log(`Added video ${videoId} to queue. Queue size: ${processingQueue.size}`);
+  processNextInQueue();
+}
+
+/**
+ * Process next video in queue if capacity available
+ */
+async function processNextInQueue() {
+  const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_VIDEOS || '3');
+
+  if (activeProcesses.size >= maxConcurrent) {
+    console.log(`Max concurrent processes (${maxConcurrent}) reached. Waiting...`);
+    return;
+  }
+
+  // Get first item from queue
+  const videoId = processingQueue.keys().next().value;
+  if (!videoId) {
+    return;
+  }
+
+  const videoData = processingQueue.get(videoId);
+  processingQueue.delete(videoId);
+  activeProcesses.add(videoId);
+
+  console.log(`Starting processing for video ${videoId}. Active: ${activeProcesses.size}`);
+
+  try {
+    await processVideo(videoId, videoData);
+  } catch (error) {
+    console.error(`Error processing video ${videoId}:`, error);
+    updateVideoStatus.run('failed', videoId);
+  } finally {
+    activeProcesses.delete(videoId);
+    console.log(`Finished processing video ${videoId}. Active: ${activeProcesses.size}`);
+    // Process next in queue
+    processNextInQueue();
+  }
+}
+
+/**
+ * Main video processing workflow
+ * @param {string} videoId - Video ID
+ * @param {Object} videoData - Video metadata
+ */
+async function processVideo(videoId, videoData) {
+  console.log(`\n=== Processing Video ${videoId} ===`);
+
+  try {
+    // Step 1: Extract audio
+    console.log('Step 1: Extracting audio...');
+    updateVideoStatus.run('extracting_audio', videoId);
+
+    const audioPath = path.join(__dirname, '../../chunks', `${videoId}_audio.wav`);
+    await extractAudio(videoData.uploadPath, audioPath);
+    updateVideoAudioPath.run(audioPath, videoId);
+
+    // Step 2: Split audio into chunks
+    console.log('Step 2: Splitting audio into chunks...');
+    updateVideoStatus.run('splitting', videoId);
+
+    const chunksDir = path.join(__dirname, '../../chunks');
+    const chunkDuration = parseInt(process.env.CHUNK_DURATION || '60');
+    const chunks = await splitAudioIntoChunks(audioPath, chunksDir, chunkDuration);
+
+    // Store chunks in database
+    for (const chunk of chunks) {
+      createChunk.run(videoId, chunk.index, chunk.path);
+    }
+
+    console.log(`Created ${chunks.length} chunks`);
+
+    // Step 3: Transcribe chunks sequentially
+    console.log('Step 3: Transcribing chunks sequentially...');
+    updateVideoStatus.run('transcribing', videoId);
+
+    let previousContext = '';
+
+    for (const chunk of chunks) {
+      console.log(`\nTranscribing chunk ${chunk.index}/${chunks.length - 1}...`);
+
+      const result = await transcribeChunk(
+        chunk.path,
+        process.env.WHISPER_MODEL || 'large-v3',
+        process.env.WHISPER_DEVICE || 'cpu',
+        process.env.WHISPER_COMPUTE_TYPE || 'int8',
+        previousContext
+      );
+
+      if (!result.success) {
+        throw new Error(`Chunk ${chunk.index} transcription failed`);
+      }
+
+      console.log(`Chunk ${chunk.index}: ${result.segments.length} segments, language: ${result.language}`);
+
+      // Update chunk status
+      const fullTranscript = result.segments.map(s => s.text).join(' ');
+      updateChunkTranscript.run(fullTranscript, chunk.index);
+      updateChunkStatus.run('completed', chunk.index);
+
+      // Store captions with time offset
+      const timeOffset = chunk.startTime;
+      const formattedSegments = formatSegmentsAsSRT(result.segments, timeOffset);
+
+      for (const segment of formattedSegments) {
+        insertCaption.run(videoId, chunk.index, segment.start, segment.end, segment.text);
+      }
+
+      // Update context for next chunk (last 100 characters)
+      previousContext = getContextFromText(fullTranscript, 100);
+    }
+
+    // Step 4: Generate final SRT file
+    console.log('Step 4: Generating final SRT file...');
+    updateVideoStatus.run('merging', videoId);
+
+    const allCaptions = getCaptions.all(videoId);
+    const srtPath = path.join(__dirname, '../../captions', `${videoId}_final.srt`);
+    await saveSRTFile(srtPath, allCaptions);
+
+    // Step 5: Cleanup temporary files
+    console.log('Step 5: Cleaning up temporary files...');
+    await cleanupVideoFiles(videoId, videoData, chunks);
+
+    // Mark as completed
+    updateVideoStatus.run('completed', videoId);
+    console.log(`\n=== Video ${videoId} completed successfully ===\n`);
+
+    return {
+      videoId,
+      srtPath,
+      captionCount: allCaptions.length,
+      chunkCount: chunks.length
+    };
+
+  } catch (error) {
+    console.error(`Error in processVideo for ${videoId}:`, error);
+    updateVideoStatus.run('failed', videoId);
+    throw error;
+  }
+}
+
+/**
+ * Cleanup temporary files after processing
+ * @param {string} videoId - Video ID
+ * @param {Object} videoData - Video metadata
+ * @param {Array} chunks - Array of chunk objects
+ */
+async function cleanupVideoFiles(videoId, videoData, chunks) {
+  try {
+    // Delete original upload
+    await fs.unlink(videoData.uploadPath);
+    console.log(`Deleted upload: ${videoData.uploadPath}`);
+
+    // Delete audio file
+    const video = getVideo.get(videoId);
+    if (video.audio_path) {
+      await fs.unlink(video.audio_path);
+      console.log(`Deleted audio: ${video.audio_path}`);
+    }
+
+    // Delete chunk files
+    for (const chunk of chunks) {
+      try {
+        await fs.unlink(chunk.path);
+      } catch (err) {
+        console.warn(`Could not delete chunk ${chunk.path}:`, err.message);
+      }
+    }
+
+    console.log('Cleanup completed');
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+    // Don't throw - cleanup errors shouldn't fail the whole process
+  }
+}
+
+/**
+ * Get queue status
+ * @returns {Object} - Queue statistics
+ */
+function getQueueStatus() {
+  return {
+    queueSize: processingQueue.size,
+    activeProcesses: activeProcesses.size,
+    maxConcurrent: parseInt(process.env.MAX_CONCURRENT_VIDEOS || '3'),
+    queuedVideos: Array.from(processingQueue.keys())
+  };
+}
+
+module.exports = {
+  addToQueue,
+  processNextInQueue,
+  getQueueStatus,
+  cleanupVideoFiles
+};
