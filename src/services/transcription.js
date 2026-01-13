@@ -1,6 +1,6 @@
-const { spawn } = require('child_process');
-const path = require('path');
-const fs = require('fs');
+const { spawn } = require("child_process");
+const path = require("path");
+const fs = require("fs");
 
 /**
  * Call Python transcription script
@@ -11,35 +11,41 @@ const fs = require('fs');
  * @param {string} initialPrompt - Context from previous chunk
  * @returns {Promise<Object>} - Transcription result
  */
-function transcribeChunk(audioPath, modelName = 'large-v3', device = 'cpu', computeType = 'int8', initialPrompt = '') {
+function transcribeChunk(
+  audioPath,
+  modelName = "large-v3",
+  device = "cpu",
+  computeType = "int8",
+  initialPrompt = ""
+) {
   return new Promise((resolve, reject) => {
-    const scriptPath = path.join(__dirname, '../../transcribe.py');
+    const scriptPath = path.join(__dirname, "../../transcribe.py");
     const args = [scriptPath, audioPath, modelName, device, computeType];
 
     if (initialPrompt) {
       args.push(initialPrompt);
     }
 
-    let stdout = '';
-    let stderr = '';
+    let stdout = "";
+    let stderr = "";
 
-    const pythonProcess = spawn('python3', args);
+    const pythonProcess = spawn("python", args);
 
-    pythonProcess.stdout.on('data', (data) => {
+    pythonProcess.stdout.on("data", (data) => {
       stdout += data.toString();
     });
 
-    pythonProcess.stderr.on('data', (data) => {
+    pythonProcess.stderr.on("data", (data) => {
       stderr += data.toString();
       // Log progress but don't treat as error
-      if (stderr.includes('ERROR') || stderr.includes('Error')) {
-        console.error('Python stderr:', data.toString());
+      if (stderr.includes("ERROR") || stderr.includes("Error")) {
+        console.error("Python stderr:", data.toString());
       }
     });
 
-    pythonProcess.on('close', (code) => {
+    pythonProcess.on("close", (code) => {
       if (code !== 0) {
-        console.error('Python process error:', stderr);
+        console.error("Python process error:", stderr);
         reject(new Error(`Transcription failed with code ${code}: ${stderr}`));
         return;
       }
@@ -49,15 +55,17 @@ function transcribeChunk(audioPath, modelName = 'large-v3', device = 'cpu', comp
         if (result.success) {
           resolve(result);
         } else {
-          reject(new Error(result.error || 'Transcription failed'));
+          reject(new Error(result.error || "Transcription failed"));
         }
       } catch (error) {
-        console.error('Failed to parse transcription output:', stdout);
-        reject(new Error(`Failed to parse transcription output: ${error.message}`));
+        console.error("Failed to parse transcription output:", stdout);
+        reject(
+          new Error(`Failed to parse transcription output: ${error.message}`)
+        );
       }
     });
 
-    pythonProcess.on('error', (error) => {
+    pythonProcess.on("error", (error) => {
       reject(new Error(`Failed to start Python process: ${error.message}`));
     });
   });
@@ -70,7 +78,7 @@ function transcribeChunk(audioPath, modelName = 'large-v3', device = 'cpu', comp
  * @returns {string} - Last N characters
  */
 function getContextFromText(text, length = 100) {
-  if (!text) return '';
+  if (!text) return "";
   return text.slice(-length).trim();
 }
 
@@ -81,10 +89,10 @@ function getContextFromText(text, length = 100) {
  * @returns {Array} - Array of SRT entries
  */
 function formatSegmentsAsSRT(segments, timeOffset = 0) {
-  return segments.map(segment => ({
+  return segments.map((segment) => ({
     start: segment.start + timeOffset,
     end: segment.end + timeOffset,
-    text: segment.text
+    text: segment.text,
   }));
 }
 
@@ -99,7 +107,11 @@ function secondsToSRTTime(seconds) {
   const secs = Math.floor(seconds % 60);
   const millis = Math.round((seconds % 1) * 1000);
 
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${millis.toString().padStart(3, '0')}`;
+  return `${hours.toString().padStart(2, "0")}:${minutes
+    .toString()
+    .padStart(2, "0")}:${secs.toString().padStart(2, "0")},${millis
+    .toString()
+    .padStart(3, "0")}`;
 }
 
 /**
@@ -113,7 +125,11 @@ function secondsToVTTTime(seconds) {
   const secs = Math.floor(seconds % 60);
   const millis = Math.round((seconds % 1) * 1000);
 
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+  return `${hours.toString().padStart(2, "0")}:${minutes
+    .toString()
+    .padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${millis
+    .toString()
+    .padStart(3, "0")}`;
 }
 
 /**
@@ -128,7 +144,9 @@ function secondsToSBVTime(seconds) {
   const millis = Math.round((seconds % 1) * 1000);
 
   // SBV uses single digit hour if less than 10
-  return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+  return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
+    .toString()
+    .padStart(2, "0")}.${millis.toString().padStart(3, "0")}`;
 }
 
 /**
@@ -137,11 +155,13 @@ function secondsToSBVTime(seconds) {
  * @returns {string} - SRT file content
  */
 function generateSRTContent(captions) {
-  let srtContent = '';
+  let srtContent = "";
 
   captions.forEach((caption, index) => {
     srtContent += `${index + 1}\n`;
-    srtContent += `${secondsToSRTTime(caption.start)} --> ${secondsToSRTTime(caption.end)}\n`;
+    srtContent += `${secondsToSRTTime(caption.start)} --> ${secondsToSRTTime(
+      caption.end
+    )}\n`;
     srtContent += `${caption.text}\n\n`;
   });
 
@@ -154,11 +174,13 @@ function generateSRTContent(captions) {
  * @returns {string} - VTT file content
  */
 function generateVTTContent(captions) {
-  let vttContent = 'WEBVTT\n\n';
+  let vttContent = "WEBVTT\n\n";
 
   captions.forEach((caption, index) => {
     vttContent += `${index + 1}\n`;
-    vttContent += `${secondsToVTTTime(caption.start)} --> ${secondsToVTTTime(caption.end)}\n`;
+    vttContent += `${secondsToVTTTime(caption.start)} --> ${secondsToVTTTime(
+      caption.end
+    )}\n`;
     vttContent += `${caption.text}\n\n`;
   });
 
@@ -171,10 +193,12 @@ function generateVTTContent(captions) {
  * @returns {string} - SBV file content
  */
 function generateSBVContent(captions) {
-  let sbvContent = '';
+  let sbvContent = "";
 
   captions.forEach((caption) => {
-    sbvContent += `${secondsToSBVTime(caption.start)},${secondsToSBVTime(caption.end)}\n`;
+    sbvContent += `${secondsToSBVTime(caption.start)},${secondsToSBVTime(
+      caption.end
+    )}\n`;
     sbvContent += `${caption.text}\n\n`;
   });
 
@@ -191,7 +215,7 @@ function saveSRTFile(filePath, captions) {
   return new Promise((resolve, reject) => {
     const srtContent = generateSRTContent(captions);
 
-    fs.writeFile(filePath, srtContent, 'utf8', (err) => {
+    fs.writeFile(filePath, srtContent, "utf8", (err) => {
       if (err) {
         reject(err);
       } else {
@@ -218,19 +242,19 @@ async function saveAllCaptionFormats(baseFilePath, captions) {
   const sbvContent = generateSBVContent(captions);
 
   try {
-    await fs.promises.writeFile(srtPath, srtContent, 'utf8');
+    await fs.promises.writeFile(srtPath, srtContent, "utf8");
     console.log(`SRT file saved: ${srtPath}`);
 
-    await fs.promises.writeFile(vttPath, vttContent, 'utf8');
+    await fs.promises.writeFile(vttPath, vttContent, "utf8");
     console.log(`VTT file saved: ${vttPath}`);
 
-    await fs.promises.writeFile(sbvPath, sbvContent, 'utf8');
+    await fs.promises.writeFile(sbvPath, sbvContent, "utf8");
     console.log(`SBV file saved: ${sbvPath}`);
 
     return {
       srt: srtPath,
       vtt: vttPath,
-      sbv: sbvPath
+      sbv: sbvPath,
     };
   } catch (error) {
     throw new Error(`Failed to save caption files: ${error.message}`);
@@ -248,5 +272,5 @@ module.exports = {
   saveAllCaptionFormats,
   secondsToSRTTime,
   secondsToVTTTime,
-  secondsToSBVTime
+  secondsToSBVTime,
 };

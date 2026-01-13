@@ -1,19 +1,20 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 // Connect to MongoDB
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/caption_generator';
+    const mongoURI =
+      process.env.MONGODB_URI || "mongodb://localhost:27017/caption_generator";
 
     await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
 
-    console.log('✅ MongoDB connected successfully');
+    console.log("✅ MongoDB connected successfully");
     console.log(`📍 Database: ${mongoose.connection.name}`);
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error.message);
+    console.error("❌ MongoDB connection error:", error.message);
     process.exit(1);
   }
 };
@@ -24,33 +25,41 @@ const videoSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true
+    index: true,
   },
   filename: {
     type: String,
-    required: true
+    required: true,
   },
   uploadPath: {
     type: String,
-    required: true
+    required: true,
   },
   audioPath: {
     type: String,
-    default: null
+    default: null,
   },
   status: {
     type: String,
-    default: 'uploaded',
-    enum: ['uploaded', 'extracting_audio', 'splitting', 'transcribing', 'merging', 'completed', 'failed']
+    default: "uploaded",
+    enum: [
+      "uploaded",
+      "extracting_audio",
+      "splitting",
+      "transcribing",
+      "merging",
+      "completed",
+      "failed",
+    ],
   },
   createdAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   completedAt: {
     type: Date,
-    default: null
-  }
+    default: null,
+  },
 });
 
 // Chunk Schema
@@ -58,41 +67,41 @@ const chunkSchema = new mongoose.Schema({
   videoId: {
     type: String,
     required: true,
-    index: true
+    index: true,
   },
   chunkIndex: {
     type: Number,
-    required: true
+    required: true,
   },
   chunkPath: {
     type: String,
-    required: true
+    required: true,
   },
   transcript: {
     type: String,
-    default: null
+    default: null,
   },
   startTime: {
     type: Number,
-    default: null
+    default: null,
   },
   endTime: {
     type: Number,
-    default: null
+    default: null,
   },
   status: {
     type: String,
-    default: 'pending',
-    enum: ['pending', 'processing', 'completed', 'failed']
+    default: "pending",
+    enum: ["pending", "processing", "completed", "failed"],
   },
   createdAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   completedAt: {
     type: Date,
-    default: null
-  }
+    default: null,
+  },
 });
 
 // Create compound index for efficient querying
@@ -103,40 +112,40 @@ const captionSchema = new mongoose.Schema({
   videoId: {
     type: String,
     required: true,
-    index: true
+    index: true,
   },
   chunkIndex: {
     type: Number,
-    required: true
+    required: true,
   },
   startTime: {
     type: Number,
-    required: true
+    required: true,
   },
   endTime: {
     type: Number,
-    required: true
+    required: true,
   },
   text: {
     type: String,
-    required: true
-  }
+    required: true,
+  },
 });
 
 // Create index for efficient sorting
 captionSchema.index({ videoId: 1, chunkIndex: 1, startTime: 1 });
 
 // Create models
-const Video = mongoose.model('Video', videoSchema);
-const Chunk = mongoose.model('Chunk', chunkSchema);
-const Caption = mongoose.model('Caption', captionSchema);
+const Video = mongoose.model("Video", videoSchema);
+const Chunk = mongoose.model("Chunk", chunkSchema);
+const Caption = mongoose.model("Caption", captionSchema);
 
 // Video operations
 const createVideo = async (videoId, filename, uploadPath) => {
   const video = new Video({
     videoId,
     filename,
-    uploadPath
+    uploadPath,
   });
   return await video.save();
 };
@@ -150,7 +159,7 @@ const updateVideoStatus = async (videoId, status) => {
     { videoId },
     {
       status,
-      completedAt: status === 'completed' ? new Date() : null
+      completedAt: status === "completed" ? new Date() : null,
     },
     { new: true }
   );
@@ -169,7 +178,7 @@ const createChunk = async (videoId, chunkIndex, chunkPath) => {
   const chunk = new Chunk({
     videoId,
     chunkIndex,
-    chunkPath
+    chunkPath,
   });
   return await chunk.save();
 };
@@ -181,7 +190,7 @@ const getChunks = async (videoId) => {
 const getPendingChunk = async (videoId) => {
   return await Chunk.findOne({
     videoId,
-    status: 'pending'
+    status: "pending",
   }).sort({ chunkIndex: 1 });
 };
 
@@ -190,7 +199,7 @@ const updateChunkStatus = async (chunkId, status) => {
     chunkId,
     {
       status,
-      completedAt: status === 'completed' ? new Date() : null
+      completedAt: status === "completed" ? new Date() : null,
     },
     { new: true }
   );
@@ -211,18 +220,35 @@ const insertCaption = async (videoId, chunkIndex, startTime, endTime, text) => {
     chunkIndex,
     startTime,
     endTime,
-    text
+    text,
   });
   return await caption.save();
 };
 
 const getCaptions = async (videoId) => {
-  return await Caption.find({ videoId })
-    .sort({ chunkIndex: 1, startTime: 1 });
+  return await Caption.find({ videoId }).sort({ chunkIndex: 1, startTime: 1 });
 };
 
 const deleteVideoCaptions = async (videoId) => {
   return await Caption.deleteMany({ videoId });
+};
+
+const getHistory = async () => {
+  return await Video.find({ status: "completed" })
+    .sort({ createdAt: -1 })
+    .select("videoId filename createdAt completedAt"); // Select only needed fields
+};
+
+const deleteVideo = async (videoId) => {
+  // Delete video record
+  const video = await Video.findOne({ videoId });
+  if (!video) return null;
+
+  await Video.deleteOne({ videoId });
+  await Chunk.deleteMany({ videoId });
+  await Caption.deleteMany({ videoId });
+
+  return video;
 };
 
 module.exports = {
@@ -241,5 +267,7 @@ module.exports = {
   updateChunkTranscript,
   insertCaption,
   getCaptions,
-  deleteVideoCaptions
+  deleteVideoCaptions,
+  getHistory,
+  deleteVideo,
 };

@@ -6,6 +6,7 @@ const { connectDB } = require("./utils/database");
 // Import routes
 const uploadRoutes = require("./routes/upload");
 const statusRoutes = require("./routes/status");
+const historyRoutes = require("./routes/history");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,6 +29,7 @@ app.get("/", (req, res) => {
 // API routes
 app.use("/api", uploadRoutes);
 app.use("/api", statusRoutes);
+app.use("/api", historyRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -56,7 +58,7 @@ const startServer = async () => {
     await connectDB();
 
     // Then start the Express server
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                                                       ║
