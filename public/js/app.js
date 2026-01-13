@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:3000/api";
+const API_BASE = "/api";
 let currentVideoId = null;
 let pollInterval = null;
 
@@ -39,7 +39,7 @@ function initLanguageSelector() {
   const wrapper = select.closest(".select-wrapper") || select.parentElement;
   if (wrapper) {
     wrapper.querySelector(".select-icon")?.remove();
-    wrapper.style.display = "block"; // Ensure container is visible
+    wrapper.style.display = "none";
   }
 
   // Create Pill Container
@@ -79,18 +79,11 @@ function initLanguageSelector() {
     pillContainer.appendChild(btn);
   });
 
-  // Insert after the label
-  const label = document.querySelector('label[for="languageSelect"]');
-  if (label) {
-    label.parentNode.insertBefore(pillContainer, select.nextSibling); // Insert after label or select
-    // Actually insert after the wrapper div if possible, or append to the input-group.
-    // In the new HTML 'input-group' contains label and wrapper.
-    // wrapper contains select.
-    // Let's replace the wrapper content with pills?
-    // No, we need select index for formData.
-    // Let's append pills to the .input-group
-    const group = select.closest(".input-group");
-    if (group) group.appendChild(pillContainer);
+  // Safe Insertion Logic
+  if (wrapper && wrapper.parentNode) {
+    wrapper.parentNode.insertBefore(pillContainer, wrapper.nextSibling);
+  } else if (select.parentNode) {
+    select.parentNode.insertBefore(pillContainer, select.nextSibling);
   }
 }
 
