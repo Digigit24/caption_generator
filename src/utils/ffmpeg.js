@@ -83,9 +83,8 @@ async function splitAudioIntoChunks(audioPath, outputDir, chunkDuration = 30) {
       );
 
       await new Promise((resolve, reject) => {
-        ffmpeg()
-          .inputOptions(["-ss", startTime.toString()])
-          .input(audioPath)
+        ffmpeg(audioPath)
+          .seekInput(startTime)
           .duration(duration)
           // Re-encoding to ensure precise start/end points
           .audioCodec("pcm_s16le")
