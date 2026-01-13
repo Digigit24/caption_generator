@@ -131,20 +131,29 @@ async function processVideo(videoId, videoData) {
     });
 
     // Define System Instructions based on Language
-    let promptInstruction = "Transcribe the audio exactly as spoken.";
+    let promptInstruction =
+      "Transcribe the audio exactly as spoken with high contextual accuracy.";
 
     if (videoData.language === "hindi") {
-      promptInstruction +=
-        " The language is Hindi. Transcribe it using English alphabets (Roman script). Example: 'Main theek hoon' instead of 'मैं ठीक हूँ'.";
+      promptInstruction =
+        "The language is Hindi. CRITICAL: Transcribe ONLY in English alphabets (Roman script/Hinglish style). " +
+        "Examples: 'Bahut sare', 'theek hai', 'namaste'. Do NOT use any Hindi characters (Devanagari). " +
+        "Context: Health, Wellness, Diet, and Online treatments. Names like 'Nubhi Wellness' might appear.";
     } else if (videoData.language === "marathi") {
-      promptInstruction +=
-        " The language is Marathi. Transcribe it in Marathi (Devanagari script) and provide a translation if possible. Example: 'Mala mahit aahe'.";
+      promptInstruction =
+        "The language is Marathi. Transcribe accurately in Marathi script. " +
+        "Context: Health, Wellness, and basic lifestyle problems.";
     } else if (videoData.language === "hinglish") {
-      promptInstruction +=
-        " The language is Hinglish (Hindi + English mix). Transcribe exactly as spoken using Roman script.";
+      promptInstruction =
+        "The language is Hinglish (a natural mix of Hindi and English). " +
+        "CRITICAL: Transcribe the entire audio using ONLY English alphabets (Roman script). " +
+        "Convert Hindi words to Roman script (e.g., 'bahut log' instead of 'बहुत लोग'). " +
+        "Ensure English words are spelled correctly in context. Context: Online medicines, Ayurvedic treatments, Nubhi Wellness, lifestyle issues. " +
+        "If a word sounds like 'ounce' but doesn't fit the weight loss context, use the most logical term.";
     } else {
-      promptInstruction +=
-        " The language is English. Ensure proper punctuation and capitalization.";
+      promptInstruction =
+        "The language is English. Focus on professional transcription, correct grammar, and contextual accuracy " +
+        "especially regarding health, wellness, and medical terms like 'Nubhi Wellness'.";
     }
 
     console.log(`Using Groq API with prompt: ${promptInstruction}`);
@@ -161,6 +170,7 @@ async function processVideo(videoId, videoData) {
           model: "whisper-large-v3",
           prompt: promptInstruction, // Context/Prompt for style
           response_format: "verbose_json", // Need segments with timestamps
+          temperature: 0,
         });
 
         // Map Groq response to our internal structure
