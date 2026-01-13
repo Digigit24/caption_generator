@@ -1,7 +1,18 @@
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const { connectDB } = require("./utils/database");
+
+// Ensure required directories exist
+const requiredDirs = ["uploads", "chunks", "captions"];
+requiredDirs.forEach((dir) => {
+  const dirPath = path.join(__dirname, "..", dir);
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+    console.log(`Created directory: ${dirPath}`);
+  }
+});
 
 // Import routes
 const uploadRoutes = require("./routes/upload");
