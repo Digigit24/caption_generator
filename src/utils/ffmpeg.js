@@ -13,7 +13,7 @@ function extractAudio(videoPath, outputPath) {
     ffmpeg(videoPath)
       .noVideo()
       .audioCodec("pcm_s16le")
-      .audioFrequency(44100)
+      .audioFrequency(16000)
       .audioChannels(1)
       .output(outputPath)
       .on("end", () => {
@@ -83,12 +83,13 @@ async function splitAudioIntoChunks(audioPath, outputDir, chunkDuration = 30) {
       );
 
       await new Promise((resolve, reject) => {
-        ffmpeg(audioPath)
-          .setStartTime(startTime)
-          .setDuration(duration)
+        ffmpeg()
+          .inputOptions(["-ss", startTime.toString()])
+          .input(audioPath)
+          .duration(duration)
           // Re-encoding to ensure precise start/end points
           .audioCodec("pcm_s16le")
-          .audioFrequency(44100)
+          .audioFrequency(16000)
           .audioChannels(1)
           .output(chunkPath)
           .on("end", () => {

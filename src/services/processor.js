@@ -130,33 +130,25 @@ async function processVideo(videoId, videoData) {
       apiKey: process.env.GROQ_API_KEY,
     });
 
-    // Define System Instructions based on Language
-    let promptInstruction =
-      "Transcribe the audio accurately based on its specific context (e.g., Education, Real Estate, Health, Podcasts, etc.).";
+    // Define Style Guides based on Language (Whisper uses prompt for style priming, not instructions)
+    let styleGuide = "Transcribe the audio accurately with proper punctuation.";
 
     if (videoData.language === "hindi") {
-      promptInstruction =
-        "The language is Hindi. CRITICAL: Transcribe ONLY in English alphabets (Roman script/Hinglish style). " +
-        "Examples: 'Bahut sare', 'theek hai', 'namaste'. Do NOT use any Hindi characters (Devanagari). " +
-        "Detect the topic (Education, Real Estate, etc.) and ensure industry-specific terms are predicted correctly based on logic.";
+      styleGuide =
+        "Namaste, main theek hoon. Aaj hum education and real estate ke concepts discuss karenge. " +
+        "Everything is in Roman script. Bahut sare log online medicine le rahe hain.";
     } else if (videoData.language === "marathi") {
-      promptInstruction =
-        "The language is Marathi. Transcribe accurately in Marathi script. " +
-        "Detect the speaker's niche and ensure correct terminology for that field is used.";
+      styleGuide = "नमस्कार, तुम्ही कसे आहात? आज आपण नवीन विषयावर बोलणार आहोत.";
     } else if (videoData.language === "hinglish") {
-      promptInstruction =
-        "The language is Hinglish (a natural mix of Hindi and English). " +
-        "CRITICAL: Transcribe the entire audio using ONLY English alphabets (Roman script). " +
-        "Convert Hindi words to Roman script (e.g., 'bahut log' instead of 'बहुत लोग'). " +
-        "Maintain the mix of languages exactly as spoken. Detect the topic (Education, Podcasts, Real Estate, etc.) " +
-        "and use contextual logic to correct misheard words into appropriate industry terms.";
+      styleGuide =
+        "Bhot sare online treatment hai, bhot sare log online medicine le rahe hai, lekin ultimate answer nahi mila. " +
+        "Humne wellness mein isko basic problem bolke dekha hai. Main theek hoon.";
     } else {
-      promptInstruction =
-        "The language is English. Focus on professional transcription, correct grammar, and contextual accuracy " +
-        "across various industries like Education,hospital,healthcare, Real Estate, Finance, and generic Podcasts.";
+      styleGuide =
+        "Hello everyone, today we are discussing global trends in education and business podcasts.";
     }
 
-    console.log(`Using Groq API with base prompt: ${promptInstruction}`);
+    console.log(`Using Groq API with base prompt: ${styleGuide}`);
 
     let rollingContext = "";
 
@@ -174,25 +166,39 @@ async function processVideo(videoId, videoData) {
             } [${chunk.startTime.toFixed(2)}s] (Attempt ${retryCount + 1})...`
           );
 
-          // Combine global instructions with rolling context from previous chunk
-          // This ensures the AI maintains the Hinglish/Roman script style and word vocabulary
-          const combinedPrompt = `${promptInstruction}\n\nPrevious context: ${rollingContext.slice(
-            -500
-          )}`;
+          // Build the prompt for Groq/Whisper
+          // For Chunk 0, we don't use a prompt to avoid bias, unless we want to force script.
+          // For Hinglish, we use the style guide only for the first chunk.
+          let whisperPrompt =
+            chunk.index === 0 ? styleGuide : rollingContext.slice(-400);
 
           const transcription = await groq.audio.transcriptions.create({
             file: fs.createReadStream(chunk.path),
             model: "whisper-large-v3",
-            prompt: combinedPrompt,
+            prompt: whisperPrompt,
             response_format: "verbose_json",
             temperature: 0,
           });
 
-          const segments = transcription.segments.map((s) => ({
-            start: s.start,
-            end: s.end,
-            text: s.text.trim(),
-          }));
+          let segments = transcription.segments || [];
+
+          // Fallback: if segments are missing but text exists, treat chunk as one segment
+          if (
+            segments.length === 0 &&
+            transcription.text &&
+            transcription.text.trim().length > 0
+          ) {
+            console.log(
+              `Chunk ${chunk.index}: No segments found, using full text fallback.`
+            );
+            segments = [
+              {
+                start: 0,
+                end: chunk.duration,
+                text: transcription.text.trim(),
+              },
+            ];
+          }
 
           console.log(
             `Chunk ${chunk.index}: ${segments.length} segments found.`
