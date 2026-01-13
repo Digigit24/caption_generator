@@ -34,46 +34,6 @@ function extractAudio(videoPath, outputPath) {
 }
 
 /**
- * Detect silence points in audio file
- * @param {string} audioPath - Path to audio file
- * @returns {Promise<Array>} - Array of silence timestamps
- */
-function detectSilence(audioPath) {
-  return new Promise((resolve, reject) => {
-    const silences = [];
-
-    ffmpeg(audioPath)
-      .audioFilters("silencedetect=noise=-30dB:d=0.5")
-      .format("null")
-      .output("-")
-      .on("error", (err) => {
-        console.error("Error detecting silence:", err.message);
-        reject(err);
-      })
-      .on("stderr", (stderrLine) => {
-        // Parse silence detection output
-        const silenceStartMatch = stderrLine.match(/silence_start: ([\d.]+)/);
-        const silenceEndMatch = stderrLine.match(/silence_end: ([\d.]+)/);
-
-        if (silenceStartMatch) {
-          silences.push({
-            type: "start",
-            time: parseFloat(silenceStartMatch[1]),
-          });
-        }
-        if (silenceEndMatch) {
-          silences.push({ type: "end", time: parseFloat(silenceEndMatch[1]) });
-        }
-      })
-      .on("end", () => {
-        console.log(`Detected ${silences.length} silence points`);
-        resolve(silences);
-      })
-      .run();
-  });
-}
-
-/**
  * Get duration of media file
  * @param {string} filePath - Path to media file
  * @returns {Promise<number>} - Duration in seconds
@@ -91,43 +51,7 @@ function getDuration(filePath) {
 }
 
 /**
- * Find optimal split points near target intervals using silence detection
- * @param {Array} silences - Array of silence points
- * @param {number} targetInterval - Target chunk duration (default 60s)
- * @param {number} totalDuration - Total audio duration
- * @returns {Array} - Array of split timestamps
- */
-function findOptimalSplitPoints(silences, targetInterval, totalDuration) {
-  const splitPoints = [0];
-  let currentTarget = targetInterval;
-
-  while (currentTarget < totalDuration) {
-    // Find silence end point closest to current target
-    let closestSilence = null;
-    let minDistance = Infinity;
-
-    for (const silence of silences) {
-      if (silence.type === "end") {
-        const distance = Math.abs(silence.time - currentTarget);
-        // Only consider silences within 10 seconds of target
-        if (distance < minDistance && distance < 10) {
-          minDistance = distance;
-          closestSilence = silence.time;
-        }
-      }
-    }
-
-    // If we found a good silence point, use it; otherwise use exact target
-    const splitPoint = closestSilence !== null ? closestSilence : currentTarget;
-    splitPoints.push(splitPoint);
-    currentTarget = splitPoint + targetInterval;
-  }
-
-  return splitPoints;
-}
-
-/**
- * Split audio file into chunks at specified timestamps
+ * Split audio file into chunks at specified timestamps (Direct splitting, no silence detection)
  * @param {string} audioPath - Path to input audio file
  * @param {string} outputDir - Directory for output chunks
  * @param {number} chunkDuration - Target chunk duration in seconds (default 60)
@@ -200,7 +124,6 @@ async function splitAudioIntoChunks(audioPath, outputDir, chunkDuration = 30) {
 
 module.exports = {
   extractAudio,
-  detectSilence,
   getDuration,
   splitAudioIntoChunks,
 };
