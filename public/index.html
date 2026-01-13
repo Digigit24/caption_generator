@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ScribeFlow | AI Caption Generator</title>
+    <meta
+      name="description"
+      content="Generate high-accuracy captions for your videos instantly using AI."
+    />
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📝</text></svg>"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <h1 class="title">ScribeFlow</h1>
+        <p class="subtitle">
+          Transform your videos with professional AI-powered captions.
+        </p>
+
+        <div id="queueInfo" class="queue-badge" style="display: none">
+          <div class="status-dot"></div>
+          <span id="queueText">System Online</span>
+        </div>
+      </header>
+
+      <!-- Main Upload Section -->
+      <main>
+        <div class="upload-card" id="dropZone">
+          <input
+            type="file"
+            id="fileInput"
+            accept="video/mp4,video/avi,video/mov,video/mkv,video/webm,video/flv,video/wmv,video/m4v"
+          />
+          <div class="upload-content">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Drag & drop video here</div>
+            <div class="upload-subtext">or click to browse</div>
+            <p
+              style="
+                margin-top: 1rem;
+                font-size: 0.8rem;
+                color: var(--text-dim);
+              "
+            >
+              Supported: MP4, MOV, AVI, MKV (Max 2GB)
+            </p>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div
+          id="errorContainer"
+          class="status-badge error"
+          style="display: none; margin: 1rem auto; width: fit-content"
+        ></div>
+
+        <!-- Processing Status -->
+        <div id="processCard" class="process-card">
+          <div class="file-info">
+            <div class="filename">
+              <span style="font-size: 1.2rem">🎥</span>
+              <span id="videoName">video.mp4</span>
+            </div>
+            <span id="statusBadge" class="status-badge active">Waiting...</span>
+          </div>
+
+          <div class="progress-container">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+
+          <div class="steps">
+            <span id="stepUpload" class="step">1. Upload</span>
+            <span id="stepExtract" class="step">2. Extract Audio</span>
+            <span id="stepTranscribe" class="step">3. AI Transcribe</span>
+            <span id="stepFinalize" class="step">4. Finalize</span>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsSection" class="results-section">
+          <div class="success-icon">✨</div>
+          <h2>Captions Ready!</h2>
+          <p class="subtitle">Your video has been successfully transcribed.</p>
+
+          <div class="download-grid">
+            <button class="btn btn-primary" onclick="downloadCaption('srt')">
+              <span>⬇️</span> Download .SRT
+            </button>
+            <button class="btn" onclick="downloadCaption('vtt')">
+              <span>⬇️</span> Download .VTT
+            </button>
+            <button class="btn" onclick="downloadCaption('sbv')">
+              <span>⬇️</span> Download .SBV
+            </button>
+          </div>
+
+          <div style="margin-top: 2rem">
+            <button
+              class="btn"
+              style="
+                border: 1px solid var(--border);
+                background: transparent;
+                margin: 0 auto;
+              "
+              onclick="resetUI()"
+            >
+              Transcribe Another Video
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <p>&copy; 2024 ScribeFlow AI. Powered by Faster-Whisper.</p>
+      </footer>
+    </div>
+
+    <script src="js/app.js"></script>
+  </body>
+</html>
