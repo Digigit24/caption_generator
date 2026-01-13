@@ -62,7 +62,7 @@ async function processNextInQueue() {
     await processVideo(videoId, videoData);
   } catch (error) {
     console.error(`Error processing video ${videoId}:`, error);
-    updateVideoStatus.run('failed', videoId);
+    await updateVideoStatus(videoId, 'failed');
   } finally {
     activeProcesses.delete(videoId);
     console.log(`Finished processing video ${videoId}. Active: ${activeProcesses.size}`);
@@ -82,15 +82,15 @@ async function processVideo(videoId, videoData) {
   try {
     // Step 1: Extract audio
     console.log('Step 1: Extracting audio...');
-    updateVideoStatus.run('extracting_audio', videoId);
+    await updateVideoStatus(videoId, 'extracting_audio');
 
     const audioPath = path.join(__dirname, '../../chunks', `${videoId}_audio.wav`);
     await extractAudio(videoData.uploadPath, audioPath);
-    updateVideoAudioPath.run(audioPath, videoId);
+    await updateVideoAudioPath(videoId, audioPath);
 
     // Step 2: Split audio into chunks
     console.log('Step 2: Splitting audio into chunks...');
-    updateVideoStatus.run('splitting', videoId);
+    await updateVideoStatus(videoId, 'splitting');
 
     const chunksDir = path.join(__dirname, '../../chunks');
     const chunkDuration = parseInt(process.env.CHUNK_DURATION || '60');
@@ -98,14 +98,14 @@ async function processVideo(videoId, videoData) {
 
     // Store chunks in database
     for (const chunk of chunks) {
-      createChunk.run(videoId, chunk.index, chunk.path);
+      await createChunk(videoId, chunk.index, chunk.path);
     }
 
     console.log(`Created ${chunks.length} chunks`);
 
     // Step 3: Transcribe chunks sequentially
     console.log('Step 3: Transcribing chunks sequentially...');
-    updateVideoStatus.run('transcribing', videoId);
+    await updateVideoStatus(videoId, 'transcribing');
 
     let previousContext = '';
 
@@ -128,15 +128,14 @@ async function processVideo(videoId, videoData) {
 
       // Update chunk status
       const fullTranscript = result.segments.map(s => s.text).join(' ');
-      updateChunkTranscript.run(fullTranscript, chunk.index);
-      updateChunkStatus.run('completed', chunk.index);
+      await updateChunkTranscript(videoId, chunk.index, fullTranscript);
 
       // Store captions with time offset
       const timeOffset = chunk.startTime;
       const formattedSegments = formatSegmentsAsSRT(result.segments, timeOffset);
 
       for (const segment of formattedSegments) {
-        insertCaption.run(videoId, chunk.index, segment.start, segment.end, segment.text);
+        await insertCaption(videoId, chunk.index, segment.start, segment.end, segment.text);
       }
 
       // Update context for next chunk (last 100 characters)
@@ -145,9 +144,9 @@ async function processVideo(videoId, videoData) {
 
     // Step 4: Generate final SRT file
     console.log('Step 4: Generating final SRT file...');
-    updateVideoStatus.run('merging', videoId);
+    await updateVideoStatus(videoId, 'merging');
 
-    const allCaptions = getCaptions.all(videoId);
+    const allCaptions = await getCaptions(videoId);
     const srtPath = path.join(__dirname, '../../captions', `${videoId}_final.srt`);
     await saveSRTFile(srtPath, allCaptions);
 
@@ -156,7 +155,7 @@ async function processVideo(videoId, videoData) {
     await cleanupVideoFiles(videoId, videoData, chunks);
 
     // Mark as completed
-    updateVideoStatus.run('completed', videoId);
+    await updateVideoStatus(videoId, 'completed');
     console.log(`\n=== Video ${videoId} completed successfully ===\n`);
 
     return {
@@ -168,7 +167,7 @@ async function processVideo(videoId, videoData) {
 
   } catch (error) {
     console.error(`Error in processVideo for ${videoId}:`, error);
-    updateVideoStatus.run('failed', videoId);
+    await updateVideoStatus(videoId, 'failed');
     throw error;
   }
 }
@@ -186,10 +185,10 @@ async function cleanupVideoFiles(videoId, videoData, chunks) {
     console.log(`Deleted upload: ${videoData.uploadPath}`);
 
     // Delete audio file
-    const video = getVideo.get(videoId);
-    if (video.audio_path) {
-      await fs.unlink(video.audio_path);
-      console.log(`Deleted audio: ${video.audio_path}`);
+    const video = await getVideo(videoId);
+    if (video && video.audioPath) {
+      await fs.unlink(video.audioPath);
+      console.log(`Deleted audio: ${video.audioPath}`);
     }
 
     // Delete chunk files

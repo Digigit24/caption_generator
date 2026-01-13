@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const { connectDB } = require('./utils/database');
 
 // Import routes
 const uploadRoutes = require('./routes/upload');
@@ -52,8 +53,14 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`
+const startServer = async () => {
+  try {
+    // Connect to MongoDB first
+    await connectDB();
+
+    // Then start the Express server
+    app.listen(PORT, () => {
+      console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                                                       ║
 ║       Caption Generator API Server                   ║
@@ -73,7 +80,14 @@ app.listen(PORT, () => {
 ║       GET    /api/download/:videoId                   ║
 ║                                                       ║
 ╚═══════════════════════════════════════════════════════╝
-  `);
-});
+      `);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 module.exports = app;

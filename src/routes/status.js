@@ -9,11 +9,11 @@ const router = express.Router();
 /**
  * GET /status/:videoId - Get processing status for a video
  */
-router.get('/status/:videoId', (req, res) => {
+router.get('/status/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
 
-    const video = getVideo.get(videoId);
+    const video = await getVideo(videoId);
 
     if (!video) {
       return res.status(404).json({
@@ -22,8 +22,8 @@ router.get('/status/:videoId', (req, res) => {
       });
     }
 
-    const chunks = getChunks.all(videoId);
-    const captions = getCaptions.all(videoId);
+    const chunks = await getChunks(videoId);
+    const captions = await getCaptions(videoId);
 
     const completedChunks = chunks.filter(c => c.status === 'completed').length;
     const totalChunks = chunks.length;
@@ -31,11 +31,11 @@ router.get('/status/:videoId', (req, res) => {
     res.json({
       success: true,
       video: {
-        id: video.id,
+        id: video.videoId,
         filename: video.filename,
         status: video.status,
-        createdAt: video.created_at,
-        completedAt: video.completed_at
+        createdAt: video.createdAt,
+        completedAt: video.completedAt
       },
       progress: {
         totalChunks,
@@ -80,11 +80,11 @@ router.get('/queue', (req, res) => {
 /**
  * GET /download/:videoId - Download SRT file
  */
-router.get('/download/:videoId', (req, res) => {
+router.get('/download/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
 
-    const video = getVideo.get(videoId);
+    const video = await getVideo(videoId);
 
     if (!video) {
       return res.status(404).json({

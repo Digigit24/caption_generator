@@ -1,105 +1,235 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const mongoose = require('mongoose');
 
-const db = new Database(path.join(__dirname, '../../captions.db'));
+// Connect to MongoDB
+const connectDB = async () => {
+  try {
+    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/caption_generator';
 
-// Initialize database schema
-db.exec(`
-  CREATE TABLE IF NOT EXISTS videos (
-    id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    upload_path TEXT NOT NULL,
-    audio_path TEXT,
-    status TEXT DEFAULT 'uploaded',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completed_at DATETIME
-  );
+    await mongoose.connect(mongoURI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
 
-  CREATE TABLE IF NOT EXISTS chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    video_id TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    chunk_path TEXT NOT NULL,
-    transcript TEXT,
-    start_time REAL,
-    end_time REAL,
-    status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completed_at DATETIME,
-    FOREIGN KEY (video_id) REFERENCES videos(id),
-    UNIQUE(video_id, chunk_index)
-  );
+    console.log('✅ MongoDB connected successfully');
+    console.log(`📍 Database: ${mongoose.connection.name}`);
+  } catch (error) {
+    console.error('❌ MongoDB connection error:', error.message);
+    process.exit(1);
+  }
+};
 
-  CREATE TABLE IF NOT EXISTS captions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    video_id TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    start_time REAL NOT NULL,
-    end_time REAL NOT NULL,
-    text TEXT NOT NULL,
-    FOREIGN KEY (video_id) REFERENCES videos(id)
-  );
+// Video Schema
+const videoSchema = new mongoose.Schema({
+  videoId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  filename: {
+    type: String,
+    required: true
+  },
+  uploadPath: {
+    type: String,
+    required: true
+  },
+  audioPath: {
+    type: String,
+    default: null
+  },
+  status: {
+    type: String,
+    default: 'uploaded',
+    enum: ['uploaded', 'extracting_audio', 'splitting', 'transcribing', 'merging', 'completed', 'failed']
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  completedAt: {
+    type: Date,
+    default: null
+  }
+});
 
-  CREATE INDEX IF NOT EXISTS idx_chunks_video ON chunks(video_id);
-  CREATE INDEX IF NOT EXISTS idx_captions_video ON captions(video_id);
-`);
+// Chunk Schema
+const chunkSchema = new mongoose.Schema({
+  videoId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  chunkIndex: {
+    type: Number,
+    required: true
+  },
+  chunkPath: {
+    type: String,
+    required: true
+  },
+  transcript: {
+    type: String,
+    default: null
+  },
+  startTime: {
+    type: Number,
+    default: null
+  },
+  endTime: {
+    type: Number,
+    default: null
+  },
+  status: {
+    type: String,
+    default: 'pending',
+    enum: ['pending', 'processing', 'completed', 'failed']
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  completedAt: {
+    type: Date,
+    default: null
+  }
+});
+
+// Create compound index for efficient querying
+chunkSchema.index({ videoId: 1, chunkIndex: 1 }, { unique: true });
+
+// Caption Schema
+const captionSchema = new mongoose.Schema({
+  videoId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  chunkIndex: {
+    type: Number,
+    required: true
+  },
+  startTime: {
+    type: Number,
+    required: true
+  },
+  endTime: {
+    type: Number,
+    required: true
+  },
+  text: {
+    type: String,
+    required: true
+  }
+});
+
+// Create index for efficient sorting
+captionSchema.index({ videoId: 1, chunkIndex: 1, startTime: 1 });
+
+// Create models
+const Video = mongoose.model('Video', videoSchema);
+const Chunk = mongoose.model('Chunk', chunkSchema);
+const Caption = mongoose.model('Caption', captionSchema);
 
 // Video operations
-const createVideo = db.prepare(`
-  INSERT INTO videos (id, filename, upload_path)
-  VALUES (?, ?, ?)
-`);
+const createVideo = async (videoId, filename, uploadPath) => {
+  const video = new Video({
+    videoId,
+    filename,
+    uploadPath
+  });
+  return await video.save();
+};
 
-const getVideo = db.prepare('SELECT * FROM videos WHERE id = ?');
+const getVideo = async (videoId) => {
+  return await Video.findOne({ videoId });
+};
 
-const updateVideoStatus = db.prepare(`
-  UPDATE videos SET status = ?, completed_at = DATETIME('now')
-  WHERE id = ?
-`);
+const updateVideoStatus = async (videoId, status) => {
+  return await Video.findOneAndUpdate(
+    { videoId },
+    {
+      status,
+      completedAt: status === 'completed' ? new Date() : null
+    },
+    { new: true }
+  );
+};
 
-const updateVideoAudioPath = db.prepare(`
-  UPDATE videos SET audio_path = ? WHERE id = ?
-`);
+const updateVideoAudioPath = async (videoId, audioPath) => {
+  return await Video.findOneAndUpdate(
+    { videoId },
+    { audioPath },
+    { new: true }
+  );
+};
 
 // Chunk operations
-const createChunk = db.prepare(`
-  INSERT INTO chunks (video_id, chunk_index, chunk_path)
-  VALUES (?, ?, ?)
-`);
+const createChunk = async (videoId, chunkIndex, chunkPath) => {
+  const chunk = new Chunk({
+    videoId,
+    chunkIndex,
+    chunkPath
+  });
+  return await chunk.save();
+};
 
-const getChunks = db.prepare(`
-  SELECT * FROM chunks WHERE video_id = ? ORDER BY chunk_index ASC
-`);
+const getChunks = async (videoId) => {
+  return await Chunk.find({ videoId }).sort({ chunkIndex: 1 });
+};
 
-const getPendingChunk = db.prepare(`
-  SELECT * FROM chunks WHERE video_id = ? AND status = 'pending'
-  ORDER BY chunk_index ASC LIMIT 1
-`);
+const getPendingChunk = async (videoId) => {
+  return await Chunk.findOne({
+    videoId,
+    status: 'pending'
+  }).sort({ chunkIndex: 1 });
+};
 
-const updateChunkStatus = db.prepare(`
-  UPDATE chunks SET status = ?, completed_at = DATETIME('now')
-  WHERE id = ?
-`);
+const updateChunkStatus = async (chunkId, status) => {
+  return await Chunk.findByIdAndUpdate(
+    chunkId,
+    {
+      status,
+      completedAt: status === 'completed' ? new Date() : null
+    },
+    { new: true }
+  );
+};
 
-const updateChunkTranscript = db.prepare(`
-  UPDATE chunks SET transcript = ? WHERE id = ?
-`);
+const updateChunkTranscript = async (videoId, chunkIndex, transcript) => {
+  return await Chunk.findOneAndUpdate(
+    { videoId, chunkIndex },
+    { transcript },
+    { new: true }
+  );
+};
 
 // Caption operations
-const insertCaption = db.prepare(`
-  INSERT INTO captions (video_id, chunk_index, start_time, end_time, text)
-  VALUES (?, ?, ?, ?, ?)
-`);
+const insertCaption = async (videoId, chunkIndex, startTime, endTime, text) => {
+  const caption = new Caption({
+    videoId,
+    chunkIndex,
+    startTime,
+    endTime,
+    text
+  });
+  return await caption.save();
+};
 
-const getCaptions = db.prepare(`
-  SELECT * FROM captions WHERE video_id = ?
-  ORDER BY chunk_index ASC, start_time ASC
-`);
+const getCaptions = async (videoId) => {
+  return await Caption.find({ videoId })
+    .sort({ chunkIndex: 1, startTime: 1 });
+};
 
-const deleteVideoCaptions = db.prepare('DELETE FROM captions WHERE video_id = ?');
+const deleteVideoCaptions = async (videoId) => {
+  return await Caption.deleteMany({ videoId });
+};
 
 module.exports = {
-  db,
+  connectDB,
+  Video,
+  Chunk,
+  Caption,
   createVideo,
   getVideo,
   updateVideoStatus,

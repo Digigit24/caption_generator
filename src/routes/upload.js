@@ -38,7 +38,7 @@ const upload = multer({
 /**
  * POST /upload - Upload video for caption generation
  */
-router.post('/upload', upload.single('video'), (req, res) => {
+router.post('/upload', upload.single('video'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -52,7 +52,7 @@ router.post('/upload', upload.single('video'), (req, res) => {
     const filename = req.file.originalname;
 
     // Store video in database
-    createVideo.run(videoId, filename, uploadPath);
+    await createVideo(videoId, filename, uploadPath);
 
     // Add to processing queue
     addToQueue(videoId, {
