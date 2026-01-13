@@ -1,6 +1,6 @@
-const ffmpeg = require('fluent-ffmpeg');
-const path = require('path');
-const fs = require('fs');
+const ffmpeg = require("fluent-ffmpeg");
+const path = require("path");
+const fs = require("fs");
 
 /**
  * Extract audio from video file as WAV
@@ -12,19 +12,19 @@ function extractAudio(videoPath, outputPath) {
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
       .noVideo()
-      .audioCodec('pcm_s16le')
+      .audioCodec("pcm_s16le")
       .audioFrequency(16000)
       .audioChannels(1)
       .output(outputPath)
-      .on('end', () => {
+      .on("end", () => {
         console.log(`Audio extracted successfully: ${outputPath}`);
         resolve(outputPath);
       })
-      .on('error', (err) => {
-        console.error('Error extracting audio:', err.message);
+      .on("error", (err) => {
+        console.error("Error extracting audio:", err.message);
         reject(err);
       })
-      .on('progress', (progress) => {
+      .on("progress", (progress) => {
         if (progress.percent) {
           console.log(`Extraction progress: ${Math.round(progress.percent)}%`);
         }
@@ -43,26 +43,29 @@ function detectSilence(audioPath) {
     const silences = [];
 
     ffmpeg(audioPath)
-      .audioFilters('silencedetect=noise=-30dB:d=0.5')
-      .format('null')
-      .output('-')
-      .on('error', (err) => {
-        console.error('Error detecting silence:', err.message);
+      .audioFilters("silencedetect=noise=-30dB:d=0.5")
+      .format("null")
+      .output("-")
+      .on("error", (err) => {
+        console.error("Error detecting silence:", err.message);
         reject(err);
       })
-      .on('stderr', (stderrLine) => {
+      .on("stderr", (stderrLine) => {
         // Parse silence detection output
         const silenceStartMatch = stderrLine.match(/silence_start: ([\d.]+)/);
         const silenceEndMatch = stderrLine.match(/silence_end: ([\d.]+)/);
 
         if (silenceStartMatch) {
-          silences.push({ type: 'start', time: parseFloat(silenceStartMatch[1]) });
+          silences.push({
+            type: "start",
+            time: parseFloat(silenceStartMatch[1]),
+          });
         }
         if (silenceEndMatch) {
-          silences.push({ type: 'end', time: parseFloat(silenceEndMatch[1]) });
+          silences.push({ type: "end", time: parseFloat(silenceEndMatch[1]) });
         }
       })
-      .on('end', () => {
+      .on("end", () => {
         console.log(`Detected ${silences.length} silence points`);
         resolve(silences);
       })
@@ -104,7 +107,7 @@ function findOptimalSplitPoints(silences, targetInterval, totalDuration) {
     let minDistance = Infinity;
 
     for (const silence of silences) {
-      if (silence.type === 'end') {
+      if (silence.type === "end") {
         const distance = Math.abs(silence.time - currentTarget);
         // Only consider silences within 10 seconds of target
         if (distance < minDistance && distance < 10) {
@@ -130,40 +133,49 @@ function findOptimalSplitPoints(silences, targetInterval, totalDuration) {
  * @param {number} chunkDuration - Target chunk duration in seconds (default 60)
  * @returns {Promise<Array>} - Array of chunk file paths with metadata
  */
-async function splitAudioIntoChunks(audioPath, outputDir, chunkDuration = 60) {
+async function splitAudioIntoChunks(audioPath, outputDir, chunkDuration = 30) {
   try {
     // Get total duration
     const totalDuration = await getDuration(audioPath);
-    console.log(`Total audio duration: ${totalDuration.toFixed(2)} seconds`);
+    console.log(
+      `Total audio duration: ${totalDuration.toFixed(
+        2
+      )} seconds. Using ${chunkDuration}s chunks.`
+    );
 
-    // Detect silence points
-    const silences = await detectSilence(audioPath);
-
-    // Find optimal split points
-    const splitPoints = findOptimalSplitPoints(silences, chunkDuration, totalDuration);
-    console.log(`Split points: ${splitPoints.map(p => p.toFixed(2)).join(', ')}`);
-
-    // Create chunks
     const chunks = [];
+    const numChunks = Math.ceil(totalDuration / chunkDuration);
 
-    for (let i = 0; i < splitPoints.length; i++) {
-      const startTime = splitPoints[i];
-      const endTime = i < splitPoints.length - 1 ? splitPoints[i + 1] : totalDuration;
+    for (let i = 0; i < numChunks; i++) {
+      const startTime = i * chunkDuration;
+      const endTime = Math.min((i + 1) * chunkDuration, totalDuration);
       const duration = endTime - startTime;
 
-      const chunkPath = path.join(outputDir, `chunk_${i.toString().padStart(3, '0')}.wav`);
+      if (duration <= 0) break;
+
+      const chunkPath = path.join(
+        outputDir,
+        `chunk_${i.toString().padStart(3, "0")}.wav`
+      );
 
       await new Promise((resolve, reject) => {
         ffmpeg(audioPath)
           .setStartTime(startTime)
           .setDuration(duration)
-          .audioCodec('copy')
+          // Re-encoding to ensure precise start/end points
+          .audioCodec("pcm_s16le")
+          .audioFrequency(16000)
+          .audioChannels(1)
           .output(chunkPath)
-          .on('end', () => {
-            console.log(`Created chunk ${i}: ${chunkPath} (${duration.toFixed(2)}s)`);
+          .on("end", () => {
+            console.log(
+              `Created chunk ${i}: ${chunkPath} [${startTime.toFixed(
+                2
+              )}s - ${endTime.toFixed(2)}s]`
+            );
             resolve();
           })
-          .on('error', (err) => {
+          .on("error", (err) => {
             console.error(`Error creating chunk ${i}:`, err.message);
             reject(err);
           })
@@ -175,13 +187,13 @@ async function splitAudioIntoChunks(audioPath, outputDir, chunkDuration = 60) {
         path: chunkPath,
         startTime,
         endTime,
-        duration
+        duration,
       });
     }
 
     return chunks;
   } catch (error) {
-    console.error('Error splitting audio:', error.message);
+    console.error("Error splitting audio:", error.message);
     throw error;
   }
 }
@@ -190,5 +202,5 @@ module.exports = {
   extractAudio,
   detectSilence,
   getDuration,
-  splitAudioIntoChunks
+  splitAudioIntoChunks,
 };

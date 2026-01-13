@@ -105,7 +105,7 @@ async function processVideo(videoId, videoData) {
     await updateVideoStatus(videoId, "splitting");
 
     const chunksDir = path.join(__dirname, "../../chunks");
-    const chunkDuration = parseInt(process.env.CHUNK_DURATION || "60");
+    const chunkDuration = parseInt(process.env.CHUNK_DURATION || "30");
     const chunks = await splitAudioIntoChunks(
       audioPath,
       chunksDir,
@@ -160,47 +160,63 @@ async function processVideo(videoId, videoData) {
 
     // Process chunks SEQUENTIALLY to ensure correct order
     for (const chunk of chunks) {
-      console.log(
-        `\nTranscribing chunk ${chunk.index}/${chunks.length - 1} via Groq...`
-      );
+      let retryCount = 0;
+      const maxRetries = 3;
+      let success = false;
 
-      try {
-        const transcription = await groq.audio.transcriptions.create({
-          file: fs.createReadStream(chunk.path),
-          model: "whisper-large-v3",
-          prompt: promptInstruction, // Context/Prompt for style
-          response_format: "verbose_json", // Need segments with timestamps
-          temperature: 0,
-        });
-
-        // Map Groq response to our internal structure
-        const segments = transcription.segments.map((s) => ({
-          start: s.start,
-          end: s.end,
-          text: s.text.trim(),
-        }));
-
-        console.log(`Chunk ${chunk.index}: ${segments.length} segments`);
-
-        // Store captions with time offset
-        const timeOffset = chunk.startTime;
-        const formattedSegments = formatSegmentsAsSRT(segments, timeOffset);
-
-        for (const segment of formattedSegments) {
-          await insertCaption(
-            videoId,
-            chunk.index,
-            segment.start,
-            segment.end,
-            segment.text
+      while (retryCount < maxRetries && !success) {
+        try {
+          console.log(
+            `\nTranscribing chunk ${chunk.index}/${
+              chunks.length - 1
+            } via Groq (Attempt ${retryCount + 1})...`
           );
+
+          const transcription = await groq.audio.transcriptions.create({
+            file: fs.createReadStream(chunk.path),
+            model: "whisper-large-v3",
+            prompt: promptInstruction,
+            response_format: "verbose_json",
+            temperature: 0,
+          });
+
+          const segments = transcription.segments.map((s) => ({
+            start: s.start,
+            end: s.end,
+            text: s.text.trim(),
+          }));
+
+          console.log(`Chunk ${chunk.index}: ${segments.length} segments`);
+
+          const timeOffset = chunk.startTime;
+          const formattedSegments = formatSegmentsAsSRT(segments, timeOffset);
+
+          for (const segment of formattedSegments) {
+            await insertCaption(
+              videoId,
+              chunk.index,
+              segment.start,
+              segment.end,
+              segment.text
+            );
+          }
+          success = true;
+        } catch (groqError) {
+          retryCount++;
+          console.error(
+            `Error on chunk ${chunk.index} (Attempt ${retryCount}):`,
+            groqError.message
+          );
+
+          if (retryCount >= maxRetries) {
+            throw new Error(
+              `Fatally failed to transcribe chunk ${chunk.index} after ${maxRetries} attempts.`
+            );
+          }
+
+          console.log(`Waiting 2s before retry...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         }
-      } catch (groqError) {
-        console.error(
-          `Groq API error on chunk ${chunk.index}:`,
-          groqError.message
-        );
-        throw new Error(`Groq Transcription failed for chunk ${chunk.index}`);
       }
     }
 
