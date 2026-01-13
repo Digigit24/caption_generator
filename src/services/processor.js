@@ -172,13 +172,32 @@ async function processVideo(videoId, videoData) {
           let whisperPrompt =
             chunk.index === 0 ? styleGuide : rollingContext.slice(-400);
 
-          const transcription = await groq.audio.transcriptions.create({
+          const groqOptions = {
             file: fs.createReadStream(chunk.path),
             model: "whisper-large-v3",
             prompt: whisperPrompt,
             response_format: "verbose_json",
             temperature: 0,
-          });
+          };
+
+          // Encourage Roman script by suggesting English for Hinglish/Hindi
+          if (
+            videoData.language === "hinglish" ||
+            videoData.language === "hindi"
+          ) {
+            groqOptions.language = "en";
+          }
+
+          const transcription = await groq.audio.transcriptions.create(
+            groqOptions
+          );
+
+          console.log(`\n--- Chunk ${chunk.index} AI RESPONSE ---`);
+          console.log(
+            `Text preview: "${transcription.text?.slice(0, 150)}..."`
+          );
+          console.log(`Segments count: ${transcription.segments?.length || 0}`);
+          console.log(`------------------------------------\n`);
 
           let segments = transcription.segments || [];
 
