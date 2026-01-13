@@ -153,10 +153,12 @@ async function processVideo(videoId, videoData) {
     } else {
       promptInstruction =
         "The language is English. Focus on professional transcription, correct grammar, and contextual accuracy " +
-        "across various industries like Education, Real Estate, Finance, and generic Podcasts.";
+        "across various industries like Education,hospital,healthcare, Real Estate, Finance, and generic Podcasts.";
     }
 
-    console.log(`Using Groq API with prompt: ${promptInstruction}`);
+    console.log(`Using Groq API with base prompt: ${promptInstruction}`);
+
+    let rollingContext = "";
 
     // Process chunks SEQUENTIALLY to ensure correct order
     for (const chunk of chunks) {
@@ -169,13 +171,19 @@ async function processVideo(videoId, videoData) {
           console.log(
             `\nTranscribing chunk ${chunk.index}/${
               chunks.length - 1
-            } via Groq (Attempt ${retryCount + 1})...`
+            } [${chunk.startTime.toFixed(2)}s] (Attempt ${retryCount + 1})...`
           );
+
+          // Combine global instructions with rolling context from previous chunk
+          // This ensures the AI maintains the Hinglish/Roman script style and word vocabulary
+          const combinedPrompt = `${promptInstruction}\n\nPrevious context: ${rollingContext.slice(
+            -500
+          )}`;
 
           const transcription = await groq.audio.transcriptions.create({
             file: fs.createReadStream(chunk.path),
             model: "whisper-large-v3",
-            prompt: promptInstruction,
+            prompt: combinedPrompt,
             response_format: "verbose_json",
             temperature: 0,
           });
@@ -186,11 +194,14 @@ async function processVideo(videoId, videoData) {
             text: s.text.trim(),
           }));
 
-          console.log(`Chunk ${chunk.index}: ${segments.length} segments`);
+          console.log(
+            `Chunk ${chunk.index}: ${segments.length} segments found.`
+          );
 
           const timeOffset = chunk.startTime;
           const formattedSegments = formatSegmentsAsSRT(segments, timeOffset);
 
+          let chunkText = "";
           for (const segment of formattedSegments) {
             await insertCaption(
               videoId,
@@ -199,7 +210,11 @@ async function processVideo(videoId, videoData) {
               segment.end,
               segment.text
             );
+            chunkText += segment.text + " ";
           }
+
+          // Update rolling context for the next chunk
+          rollingContext += chunkText;
           success = true;
         } catch (groqError) {
           retryCount++;
@@ -214,8 +229,8 @@ async function processVideo(videoId, videoData) {
             );
           }
 
-          console.log(`Waiting 2s before retry...`);
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          console.log(`Waiting 3s before retry...`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       }
     }
