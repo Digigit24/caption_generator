@@ -293,7 +293,33 @@ function showSuccess(skipFetch = false) {
   if (currentVideoId) {
     const audioPlayer = document.getElementById("mainAudioPlayer");
     if (audioPlayer) {
-      audioPlayer.src = `${API_BASE}/audio/${currentVideoId}_audio.wav`;
+      const audioUrl = `${API_BASE}/audio/${currentVideoId}_audio.wav`;
+      console.log("Loading audio from:", audioUrl);
+      audioPlayer.src = audioUrl;
+
+      audioPlayer.onerror = (e) => {
+        console.error("Audio failed to load:", e);
+        const container = audioPlayer.closest(".audio-player-container");
+        if (container) {
+          const errorMsg =
+            container.querySelector(".audio-error") ||
+            document.createElement("p");
+          errorMsg.className = "audio-error text-xs text-red-400 mt-1";
+          errorMsg.textContent =
+            "Audio preview unavailable for this item (it may have been deleted).";
+          if (!container.querySelector(".audio-error"))
+            container.appendChild(errorMsg);
+        }
+      };
+
+      audioPlayer.onloadedmetadata = () => {
+        console.log("Audio metadata loaded, duration:", audioPlayer.duration);
+        const container = audioPlayer.closest(".audio-player-container");
+        if (container) {
+          const errorMsg = container.querySelector(".audio-error");
+          if (errorMsg) errorMsg.remove();
+        }
+      };
     }
     fetchTranscriptPreview(currentVideoId);
   }
@@ -380,7 +406,7 @@ function renderHistory(items) {
   items.forEach((item) => {
     const div = document.createElement("div");
     div.style.cssText = `
-            background: var(--surface);
+            background: var(--zinc-900);
             padding: 1rem;
             border-radius: var(--radius);
             border: 1px solid var(--border);
@@ -393,14 +419,17 @@ function renderHistory(items) {
       item.completedAt || item.createdAt
     ).toLocaleString();
 
+    // Escape filename for safety in onclick
+    const safeFilename = item.filename.replace(/'/g, "\\'");
+
     div.innerHTML = `
             <div>
-                <div style="font-weight: 600;">${item.filename}</div>
+                <div style="font-weight: 600; color: var(--text-bright);">${item.filename}</div>
                 <div style="font-size: 0.8rem; color: var(--text-dim);">${dateStr}</div>
             </div>
             <div style="display: flex; gap: 0.5rem;">
-                <button class="btn" style="padding: 0.4rem;" onclick="loadHistoryItem('${item.videoId}')">📂 View</button>
-                <button class="btn" style="padding: 0.4rem; background: var(--error); border-color: var(--error);" onclick="deleteHistoryItem('${item.videoId}')">🗑️</button>
+                <button class="btn btn-sm" onclick="loadHistoryItem('${item.videoId}', '${safeFilename}')">📂 View</button>
+                <button class="btn btn-sm danger" onclick="deleteHistoryItem('${item.videoId}')">🗑️</button>
             </div>
         `;
     list.appendChild(div);
@@ -418,9 +447,11 @@ window.deleteHistoryItem = async function (videoId) {
   }
 };
 
-window.loadHistoryItem = function (videoId) {
+window.loadHistoryItem = function (videoId, filename) {
   // Switch to view mode for this ID
   currentVideoId = videoId;
+  if (filename) videoNameEl.textContent = filename;
+
   window.toggleHistory(); // Close history view
 
   // Simulate Success State
@@ -510,18 +541,7 @@ async function fetchTranscriptPreview(videoId) {
   }
 }
 
-function showSuccess(skipFetch = false) {
-  processCard.style.display = "none";
-  resultsSection.style.display = "block";
-  // statusBadge logic moved to timeline only?
-  // statusBadge is in processCard, so it hides with it.
-  // But we might want to keep statusBadge visible elsewhere?
-  // No, Results section has its own "Captions Ready" header.
-
-  if (currentVideoId) {
-    fetchTranscriptPreview(currentVideoId);
-  }
-}
+// Duplicate showSuccess was here, removed.
 
 function showError(msg) {
   if (msg) {
