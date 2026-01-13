@@ -54,6 +54,7 @@ router.get("/transcript/:videoId", async (req, res) => {
     // Return structured data for rich UI
     const structuredTranscript = captions.map((c) => ({
       start: new Date(c.startTime * 1000).toISOString().substr(11, 8),
+      startTime: c.startTime,
       end: new Date(c.endTime * 1000).toISOString().substr(11, 8),
       text: c.text,
     }));

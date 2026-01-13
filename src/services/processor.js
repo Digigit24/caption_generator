@@ -240,12 +240,8 @@ async function cleanupVideoFiles(videoId, videoData, chunks) {
     await fs.unlink(videoData.uploadPath);
     console.log(`Deleted upload: ${videoData.uploadPath}`);
 
-    // Delete audio file
-    const video = await getVideo(videoId);
-    if (video && video.audioPath) {
-      await fs.unlink(video.audioPath);
-      console.log(`Deleted audio: ${video.audioPath}`);
-    }
+    // We keep the main audio file to allow playback in the results UI
+    console.log("Keeping main audio file for playback");
 
     // Delete chunk files
     for (const chunk of chunks) {

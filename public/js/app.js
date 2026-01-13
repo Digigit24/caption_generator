@@ -287,10 +287,14 @@ function setStepState(elementId, state) {
 function showSuccess(skipFetch = false) {
   processCard.style.display = "none";
   resultsSection.style.display = "block";
-  statusBadge.className = "badge completed"; // Updated
+  statusBadge.className = "badge completed";
   statusBadge.textContent = "COMPLETED";
 
   if (currentVideoId) {
+    const audioPlayer = document.getElementById("mainAudioPlayer");
+    if (audioPlayer) {
+      audioPlayer.src = `${API_BASE}/audio/${currentVideoId}_audio.wav`;
+    }
     fetchTranscriptPreview(currentVideoId);
   }
 }
@@ -456,21 +460,37 @@ async function fetchTranscriptPreview(videoId) {
       previewEl.innerHTML = ""; // Clear loader
 
       const listContainer = document.createElement("div");
-      listContainer.className = "flex flex-col gap-0"; // Tailwind classes
+      listContainer.className = "flex flex-col gap-0";
 
       data.transcript.forEach((segment) => {
         const row = document.createElement("div");
-        row.className =
-          "flex flex-col sm:flex-row gap-2 sm:gap-4 p-4 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors group";
+        row.className = "transcript-row"; // Use the CSS class we defined
 
         const time = document.createElement("div");
-        time.className =
-          "text-violet-400 font-mono text-xs sm:text-sm whitespace-nowrap pt-1 select-none opacity-70 group-hover:opacity-100 transition-opacity";
-        time.textContent = segment.start;
+        time.className = "t-time flex items-center gap-2";
+
+        // Add Play Icon
+        const playBtn = document.createElement("button");
+        playBtn.className = "btn-icon";
+        playBtn.style.padding = "2px";
+        playBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" style="width:14px; height:14px;"><path d="M8 5v14l11-7z"/></svg>`;
+        playBtn.onclick = (e) => {
+          e.stopPropagation();
+          const player = document.getElementById("mainAudioPlayer");
+          if (player) {
+            player.currentTime = segment.startTime;
+            player.play();
+          }
+        };
+
+        const timeText = document.createElement("span");
+        timeText.textContent = segment.start;
+
+        time.appendChild(playBtn);
+        time.appendChild(timeText);
 
         const text = document.createElement("div");
-        text.className =
-          "text-zinc-200 text-sm sm:text-base font-medium leading-relaxed";
+        text.className = "t-text";
         text.textContent = segment.text;
 
         row.appendChild(time);

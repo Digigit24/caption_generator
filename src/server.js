@@ -41,6 +41,7 @@ app.get("/", (req, res) => {
 app.use("/api", uploadRoutes);
 app.use("/api", statusRoutes);
 app.use("/api", historyRoutes);
+app.use("/api/audio", express.static(path.join(__dirname, "../chunks")));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

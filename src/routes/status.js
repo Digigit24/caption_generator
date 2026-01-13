@@ -1,15 +1,15 @@
-const express = require('express');
-const path = require('path');
-const fs = require('fs');
-const { getVideo, getChunks, getCaptions } = require('../utils/database');
-const { getQueueStatus } = require('../services/processor');
+const express = require("express");
+const path = require("path");
+const fs = require("fs");
+const { getVideo, getChunks, getCaptions } = require("../utils/database");
+const { getQueueStatus } = require("../services/processor");
 
 const router = express.Router();
 
 /**
  * GET /status/:videoId - Get processing status for a video
  */
-router.get('/status/:videoId', async (req, res) => {
+router.get("/status/:videoId", async (req, res) => {
   try {
     const { videoId } = req.params;
 
@@ -18,14 +18,16 @@ router.get('/status/:videoId', async (req, res) => {
     if (!video) {
       return res.status(404).json({
         success: false,
-        error: 'Video not found'
+        error: "Video not found",
       });
     }
 
     const chunks = await getChunks(videoId);
     const captions = await getCaptions(videoId);
 
-    const completedChunks = chunks.filter(c => c.status === 'completed').length;
+    const completedChunks = chunks.filter(
+      (c) => c.status === "completed"
+    ).length;
     const totalChunks = chunks.length;
 
     res.json({
@@ -35,23 +37,25 @@ router.get('/status/:videoId', async (req, res) => {
         filename: video.filename,
         status: video.status,
         createdAt: video.createdAt,
-        completedAt: video.completedAt
+        completedAt: video.completedAt,
       },
       progress: {
         totalChunks,
         completedChunks,
-        percentage: totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0
+        percentage:
+          totalChunks > 0
+            ? Math.round((completedChunks / totalChunks) * 100)
+            : 0,
       },
       captions: {
-        count: captions.length
-      }
+        count: captions.length,
+      },
     });
-
   } catch (error) {
-    console.error('Status error:', error);
+    console.error("Status error:", error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -59,20 +63,19 @@ router.get('/status/:videoId', async (req, res) => {
 /**
  * GET /queue - Get queue status
  */
-router.get('/queue', (req, res) => {
+router.get("/queue", (req, res) => {
   try {
     const status = getQueueStatus();
 
     res.json({
       success: true,
-      queue: status
+      queue: status,
     });
-
   } catch (error) {
-    console.error('Queue status error:', error);
+    console.error("Queue status error:", error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -80,17 +83,17 @@ router.get('/queue', (req, res) => {
 /**
  * GET /download/:videoId?format=srt|vtt|sbv - Download caption file
  */
-router.get('/download/:videoId', async (req, res) => {
+router.get("/download/:videoId", async (req, res) => {
   try {
     const { videoId } = req.params;
-    const format = (req.query.format || 'srt').toLowerCase();
+    const format = (req.query.format || "srt").toLowerCase();
 
     // Validate format
-    const validFormats = ['srt', 'vtt', 'sbv'];
+    const validFormats = ["srt", "vtt", "sbv"];
     if (!validFormats.includes(format)) {
       return res.status(400).json({
         success: false,
-        error: `Invalid format. Allowed formats: ${validFormats.join(', ')}`
+        error: `Invalid format. Allowed formats: ${validFormats.join(", ")}`,
       });
     }
 
@@ -99,36 +102,53 @@ router.get('/download/:videoId', async (req, res) => {
     if (!video) {
       return res.status(404).json({
         success: false,
-        error: 'Video not found'
+        error: "Video not found",
       });
     }
 
-    if (video.status !== 'completed') {
+    if (video.status !== "completed") {
       return res.status(400).json({
         success: false,
-        error: 'Video processing not completed yet',
-        status: video.status
+        error: "Video processing not completed yet",
+        status: video.status,
       });
     }
 
-    const captionPath = path.join(__dirname, '../../captions', `${videoId}_final.${format}`);
+    const captionPath = path.join(
+      __dirname,
+      "../../captions",
+      `${videoId}_final.${format}`
+    );
 
     if (!fs.existsSync(captionPath)) {
       return res.status(404).json({
         success: false,
-        error: `Caption file not found (${format} format)`
+        error: `Caption file not found (${format} format)`,
       });
     }
 
     // Extract original filename without extension
-    const originalName = video.filename.replace(/\.[^/.]+$/, '');
-    res.download(captionPath, `${originalName}.${format}`);
+    const originalName = video.filename.replace(/\.[^/.]+$/, "");
 
+    // Set headers to help browser trust the file
+    const mimeTypes = {
+      srt: "application/x-subrip",
+      vtt: "text/vtt",
+      sbv: "text/plain",
+    };
+
+    res.setHeader(
+      "Content-Type",
+      mimeTypes[format] || "application/octet-stream"
+    );
+    res.setHeader("X-Content-Type-Options", "nosniff");
+
+    res.download(captionPath, `${originalName}.${format}`);
   } catch (error) {
-    console.error('Download error:', error);
+    console.error("Download error:", error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
